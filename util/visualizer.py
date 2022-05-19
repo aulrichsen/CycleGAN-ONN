@@ -234,6 +234,8 @@ class Visualizer():
                 win=self.display_id)
         except VisdomExceptionBase:
             self.create_visdom_connections()
+    
+    def plot_current_losses_wandb(self, losses):
         if self.use_wandb:
             self.wandb_run.log(losses)
 
