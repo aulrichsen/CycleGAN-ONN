@@ -4,6 +4,8 @@ from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
 
+from models.SelfONN import SelfONN2d, SelfONNTranspose2d
+
 
 ###############################################################################
 # Helper Functions
@@ -116,7 +118,7 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     return net
 
 
-def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
+def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[], q=3, is_residual=False, use_bias=True):
     """Create a generator
 
     Parameters:
@@ -154,12 +156,14 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
         net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'unet_256':
         net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
+    elif netG == 'simple_onn':
+        net = SimpleONNGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, q=q, use_bias=use_bias, is_residual=is_residual)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
 
 
-def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal', init_gain=0.02, gpu_ids=[]):
+def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal', init_gain=0.02, gpu_ids=[], q=3, is_residual=False, use_bias=True):
     """Create a discriminator
 
     Parameters:
@@ -198,6 +202,8 @@ def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal'
         net = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer)
     elif netD == 'pixel':     # classify if each pixel is real or fake
         net = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer)
+    elif netD == 'simple_onn':
+        net = SimpleONNDiscriminator(input_nc, ndf, norm_layer=norm_layer, q=q, use_bias=use_bias, is_residual=is_residual)
     else:
         raise NotImplementedError('Discriminator model name [%s] is not recognized' % netD)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -613,3 +619,121 @@ class PixelDiscriminator(nn.Module):
     def forward(self, input):
         """Standard forward."""
         return self.net(input)
+
+
+class UNetONNGenerator(nn.Module):
+    def __init__(self, input_nc, q=3, use_bias=True, is_residual=False):
+        super(UNetONNGenerator, self).__init__()
+        self.is_residual = is_residual
+        self.onn1 = nn.Sequential(
+            SelfONN2d(input_nc, 64, kernel_size=7, padding=7 // 2, bias=use_bias, q=q),
+            nn.BatchNorm2d(64),
+            nn.Tanh())
+        
+        self.onn2 = nn.Sequential(
+            SelfONN2d(64, 128, kernel_size=3, padding=3 // 2, stride=2, bias=use_bias, q=q),
+            nn.BatchNorm2d(128),
+            nn.Tanh())
+        
+        self.onn3 = nn.Sequential(
+            SelfONN2d(128, 256, kernel_size=3, padding=3 // 2, stride=2, bias=use_bias, q=q),
+            nn.BatchNorm2d(256),
+            nn.Tanh())
+
+        self.onn_trans1 = nn.Sequential(            
+            SelfONNTranspose2d(256, 128, kernel_size=3, padding=3 // 2, output_padding=1, stride=2, bias=use_bias, q=q),
+            nn.BatchNorm2d(128),
+            nn.Tanh())
+            
+        self.onn_trans2 = nn.Sequential(
+            SelfONNTranspose2d(128, 64, kernel_size=3, padding=3 // 2, output_padding=1, stride=2, bias=use_bias, q=q),
+            nn.BatchNorm2d(64),
+            nn.Tanh())
+            
+        self.onn4 = nn.Sequential(
+            SelfONN2d(64, input_nc, kernel_size=7, padding=7 // 2, bias=use_bias, q=q),
+            nn.Tanh())  # NORMALIZE IMAGES TO -1 and 1
+
+    def forward(self, x):
+        out1 = self.onn1(x)
+
+        # ** Finish forward code **
+
+        return out1
+
+
+class SimpleONNGenerator(nn.Module):
+    """
+    Simple ONN generator network.
+    """
+    def __init__(self, input_nc, output_nc, ngf=64, q=3, use_bias=True, norm_layer=nn.BatchNorm2d, use_dropout=False, is_residual=False):
+        """Construct a Simple SelfONN-based generator
+
+        Parameters:
+            input_nc (int)      -- the number of channels in input images
+            output_nc (int)     -- the number of channels in output images
+            ngf (int)           -- the number of filters in the last conv layer
+            q (int)             -- Number of parameters in Maclaurin series appproximation
+            use_bias (bool)     -- use bias in ONN layers
+            norm_layer          -- normalization layer
+            use_dropout (bool)  -- if use dropout layers
+            is_residual (bool)  -- use residual connection to connect input directly to output
+        """
+        super(SimpleONNGenerator, self).__init__()
+        self.is_residual = is_residual
+        dropout = 0.5 if use_dropout else None
+        self.net = nn.Sequential(
+            SelfONN2d(input_nc, 64, kernel_size=7, padding=7 // 2, bias=use_bias, q=q, dropout=dropout),
+            norm_layer(64),
+            nn.Tanh(),
+            SelfONN2d(64, ngf, kernel_size=3, padding=3 // 2, bias=use_bias, q=q, dropout=dropout),
+            norm_layer(64),
+            nn.Tanh(),
+            SelfONN2d(ngf, output_nc, kernel_size=7, padding=7 // 2, bias=use_bias, q=q, dropout=dropout))
+
+        self.tanh = nn.Tanh()
+
+    def forward(self, x):
+        out = self.net(x)
+
+        if self.is_residual: out = torch.add(out, x)
+
+        out = self.tanh(out)
+        return out
+
+class SimpleONNDiscriminator(nn.Module):
+    """
+    Simple 3 layer ONN discriminator network.
+    """
+    def __init__(self, input_nc, ndf=64, q=3, use_bias=True, norm_layer=nn.BatchNorm2d, is_residual=False):
+        """Construct a Simple SelfONN-based discriminator
+
+        Parameters:
+            input_nc (int)      -- the number of channels in input images
+            ndf (int)           -- the number of filters in the last conv layer
+            q (int)             -- number of parameters in Maclaurin series appproximation
+            use_bias (bool)     -- use bias in ONN layers
+            norm_layer          -- normalization layer
+            is_residual (bool)  -- use residual connection to connect input directly to output
+        """
+        super(SimpleONNDiscriminator, self).__init__()
+        self.is_residual = is_residual
+
+        self.net = nn.Sequential(
+            SelfONN2d(input_nc, 64, kernel_size=3, padding=3 // 2, bias=use_bias, q=q),
+            norm_layer(64),
+            nn.Tanh(),
+            SelfONN2d(64, ndf, kernel_size=3, padding=3 // 2, bias=use_bias, q=q),
+            norm_layer(64),
+            nn.Tanh(),
+            SelfONN2d(ndf, 1, kernel_size=7, padding=7 // 2, bias=use_bias, q=q))    # output 1 channel prediction map
+
+        self.tanh = nn.Tanh()
+
+    def forward(self, x):
+        out = self.net(x)
+
+        if self.is_residual: out = torch.add(out, x)
+
+        out = self.tanh(out)
+        return out
