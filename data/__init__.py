@@ -54,8 +54,13 @@ def create_dataset(opt):
         >>> from data import create_dataset
         >>> dataset = create_dataset(opt)
     """
-    data_loader = CustomDatasetDataLoader(opt)
-    dataset = data_loader.load_data()
+    if opt.dataset_mode == "cuda":
+        dataset_class = find_dataset_using_name(opt.dataset_mode)
+        dataset = dataset_class(opt)
+        data_loader = torch.utils.data.DataLoader(dataset, batch_size=opt.batch_size, shuffle=not opt.serial_batches)  # Single threaded dataloader
+    else:
+        data_loader = CustomDatasetDataLoader(opt)
+        dataset = data_loader.load_data()
     return dataset
 
 

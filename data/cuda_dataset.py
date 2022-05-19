@@ -36,17 +36,17 @@ class CudaDataset(BaseDataset):
         self.transform_A = get_transform(self.opt, grayscale=(input_nc == 1))
         self.transform_B = get_transform(self.opt, grayscale=(output_nc == 1))
 
-        device = "cuda:"+min(opt.gpu_ids)
+        device = "cuda:"+str(min(opt.gpu_ids))
         self.A_imgs = []
         for A_path in self.A_paths:
             A_img = Image.open(A_path).convert('RGB')
             A_img = self.transform_A(A_img).to(device)
-            self.A_imgs.append(A_img)
+            self.A_imgs.append(A_img.unsqueeze(0))
         self.B_imgs = []
         for B_path in self.B_paths:
             B_img = Image.open(B_path).convert('RGB')
             B_img = self.transform_B(B_img).to(device)
-            self.B_imgs.append(B_img)
+            self.B_imgs.append(B_img.unsqueeze(0))
 
 
     def __getitem__(self, index):
@@ -67,8 +67,8 @@ class CudaDataset(BaseDataset):
         else:   # randomize the index for domain B to avoid fixed pairs.
             index_B = random.randint(0, self.B_size - 1)
         B_path = self.B_paths[index_B]
-        A_img = self.A_imgs['index_A']
-        B_img = self.B_imgs['index_B']
+        A_img = self.A_imgs[index]
+        B_img = self.B_imgs[index_B]
 
         return {'A': A_img, 'B': B_img, 'A_paths': A_path, 'B_paths': B_path}
 
