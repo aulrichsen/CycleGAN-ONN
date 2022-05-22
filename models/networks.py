@@ -158,6 +158,8 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
         net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'simple_onn':
         net = SimpleONNGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, q=q, use_bias=use_bias, is_residual=is_residual)
+    elif netG == 'unet_onn':
+        net = UNetONNGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, q=q, use_bias=use_bias, is_residual=is_residual)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -204,6 +206,8 @@ def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal'
         net = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer)
     elif netD == 'simple_onn':
         net = SimpleONNDiscriminator(input_nc, ndf, norm_layer=norm_layer, q=q, use_bias=use_bias, is_residual=is_residual)
+    elif netD == 'unet_onn':
+        net = UNetONNDiscriminator(input_nc, ndf, norm_layer=norm_layer, q=q, use_bias=use_bias, is_residual=is_residual)
     else:
         raise NotImplementedError('Discriminator model name [%s] is not recognized' % netD)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -621,46 +625,7 @@ class PixelDiscriminator(nn.Module):
         return self.net(input)
 
 
-class UNetONNGenerator(nn.Module):
-    def __init__(self, input_nc, q=3, use_bias=True, is_residual=False):
-        super(UNetONNGenerator, self).__init__()
-        self.is_residual = is_residual
-        self.onn1 = nn.Sequential(
-            SelfONN2d(input_nc, 64, kernel_size=7, padding=7 // 2, bias=use_bias, q=q),
-            nn.BatchNorm2d(64),
-            nn.Tanh())
-        
-        self.onn2 = nn.Sequential(
-            SelfONN2d(64, 128, kernel_size=3, padding=3 // 2, stride=2, bias=use_bias, q=q),
-            nn.BatchNorm2d(128),
-            nn.Tanh())
-        
-        self.onn3 = nn.Sequential(
-            SelfONN2d(128, 256, kernel_size=3, padding=3 // 2, stride=2, bias=use_bias, q=q),
-            nn.BatchNorm2d(256),
-            nn.Tanh())
-
-        self.onn_trans1 = nn.Sequential(            
-            SelfONNTranspose2d(256, 128, kernel_size=3, padding=3 // 2, output_padding=1, stride=2, bias=use_bias, q=q),
-            nn.BatchNorm2d(128),
-            nn.Tanh())
-            
-        self.onn_trans2 = nn.Sequential(
-            SelfONNTranspose2d(128, 64, kernel_size=3, padding=3 // 2, output_padding=1, stride=2, bias=use_bias, q=q),
-            nn.BatchNorm2d(64),
-            nn.Tanh())
-            
-        self.onn4 = nn.Sequential(
-            SelfONN2d(64, input_nc, kernel_size=7, padding=7 // 2, bias=use_bias, q=q),
-            nn.Tanh())  # NORMALIZE IMAGES TO -1 and 1
-
-    def forward(self, x):
-        out1 = self.onn1(x)
-
-        # ** Finish forward code **
-
-        return out1
-
+## My models
 
 class SimpleONNGenerator(nn.Module):
     """
@@ -736,4 +701,111 @@ class SimpleONNDiscriminator(nn.Module):
         if self.is_residual: out = torch.add(out, x)
 
         out = self.tanh(out)
+        return out
+
+
+class UNetONNGenerator(nn.Module):
+    def __init__(self, input_nc, output_nc, ngf=64, q=3, use_bias=True, norm_layer=nn.BatchNorm2d, use_dropout=False, is_residual=False, is_deconv=False):
+        super(UNetONNGenerator, self).__init__()
+        self.is_residual = is_residual
+        dropout = 0.5 if use_dropout else None
+        self.onn1 = nn.Sequential(
+            SelfONN2d(input_nc, 64, kernel_size=7, padding=7 // 2, bias=use_bias, q=q, dropout=dropout),
+            norm_layer(64))
+            
+        
+        self.onn2 = nn.Sequential(
+            SelfONN2d(64, 128, kernel_size=3, padding=3 // 2, stride=2, bias=use_bias, q=q, dropout=dropout),
+            norm_layer(128))
+        
+        self.onn3 = nn.Sequential(
+            SelfONN2d(128, 256, kernel_size=3, padding=3 // 2, stride=2, bias=use_bias, q=q, dropout=dropout),
+            norm_layer(256))
+
+        if is_deconv:
+            self.onn_trans1 = nn.Sequential(            
+                SelfONNTranspose2d(256, 128, kernel_size=3, padding=3 // 2, output_padding=1, stride=2, bias=use_bias, q=q, dropout=dropout),
+                norm_layer(128))
+        else:
+            self.onn_trans1 = nn.Sequential(
+                 nn.UpsamplingBilinear2d(scale_factor=2),
+                 SelfONN2d(256, 128, kernel_size=3, padding=3 // 2, bias=use_bias, q=q, dropout=dropout),
+                 norm_layer(128))
+
+        if is_deconv:
+            self.onn_trans2 = nn.Sequential(
+                SelfONNTranspose2d(256 if is_residual else 128, ngf, kernel_size=3, padding=3 // 2, output_padding=1, stride=2, bias=use_bias, q=q, dropout=dropout),
+                norm_layer(ngf))
+        else:
+            self.onn_trans2 = nn.Sequential(
+                 nn.UpsamplingBilinear2d(scale_factor=2),
+                 SelfONN2d(256 if is_residual else 128, ngf, kernel_size=3, padding=3 // 2, bias=use_bias, q=q, dropout=dropout),
+                 norm_layer(ngf))
+            
+        self.onn4 = SelfONN2d(ngf+64 if is_residual else ngf, output_nc, kernel_size=7, padding=7 // 2, bias=use_bias, q=q, dropout=dropout)
+
+        self.tanh  = nn.Tanh()  # NORMALIZE IMAGES TO -1 and 1
+
+    def forward(self, x):
+        x = self.onn1(x)
+        d1 = self.onn2(self.tanh(x))
+        d2 = self.onn3(self.tanh(d1))
+        u1 = self.onn_trans1(self.tanh(d2))
+        if self.is_residual: u1 = torch.cat((u1, d1), dim=1)
+        u2 = self.onn_trans2(self.tanh(u1))
+        if self.is_residual: u2 = torch.cat((u2, x), dim=1)
+        out = self.tanh(self.onn4(self.tanh(u2)))
+        return out
+
+
+
+class UNetONNDiscriminator(nn.Module):
+    def __init__(self, input_nc, ndf=64, q=3, use_bias=True, norm_layer=nn.BatchNorm2d, is_residual=False, is_deconv=False):
+        super(UNetONNDiscriminator, self).__init__()
+        self.is_residual = is_residual
+        self.onn1 = nn.Sequential(
+            SelfONN2d(input_nc, 64, kernel_size=7, padding=7 // 2, bias=use_bias, q=q),
+            norm_layer(64))
+        
+        self.onn2 = nn.Sequential(
+            SelfONN2d(64, 128, kernel_size=3, padding=3 // 2, stride=2, bias=use_bias, q=q),
+            norm_layer(128))
+        
+        self.onn3 = nn.Sequential(
+            SelfONN2d(128, 256, kernel_size=3, padding=3 // 2, stride=2, bias=use_bias, q=q),
+            norm_layer(256))
+
+        if is_deconv:
+            self.onn_trans1 = nn.Sequential(            
+                SelfONNTranspose2d(256, 128, kernel_size=3, padding=3 // 2, output_padding=1, stride=2, bias=use_bias, q=q),
+                norm_layer(128))
+        else:
+            self.onn_trans1 = nn.Sequential(
+                 nn.UpsamplingBilinear2d(scale_factor=2),
+                 SelfONN2d(256, 128, kernel_size=3, padding=3 // 2, bias=use_bias, q=q),
+                 norm_layer(128))
+
+        if is_deconv:    
+            self.onn_trans2 = nn.Sequential(
+                SelfONNTranspose2d(256 if is_residual else 128, ndf, kernel_size=3, padding=3 // 2, output_padding=1, stride=2, bias=use_bias, q=q),
+                norm_layer(ndf))
+        else:
+            self.onn_trans2 = nn.Sequential(
+                 nn.UpsamplingBilinear2d(scale_factor=2),
+                 SelfONN2d(256 if is_residual else 128, ndf, kernel_size=3, padding=3 // 2, bias=use_bias, q=q),
+                 norm_layer(ndf))
+            
+        self.onn4 = SelfONN2d(ndf+64 if is_residual else ndf, 1, kernel_size=7, padding=7 // 2, bias=use_bias, q=q)
+
+        self.tanh  = nn.Tanh()  # NORMALIZE IMAGES TO -1 and 1
+
+    def forward(self, x):
+        x = self.onn1(x)
+        d1 = self.onn2(self.tanh(x))
+        d2 = self.onn3(self.tanh(d1))
+        u1 = self.onn_trans1(self.tanh(d2))
+        if self.is_residual: u1 = torch.cat((u1, d1), dim=1)
+        u2 = self.onn_trans2(self.tanh(u1))
+        if self.is_residual: u2 = torch.cat((u2, x), dim=1)
+        out = self.tanh(self.onn4(self.tanh(u2)))
         return out
