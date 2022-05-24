@@ -657,13 +657,14 @@ class SimpleONNGenerator(nn.Module):
             SelfONN2d(ngf, output_nc, kernel_size=7, padding=7 // 2, bias=use_bias, q=q, dropout=dropout))
 
         self.tanh = nn.Tanh()
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
         out = self.net(x)
 
         if self.is_residual: out = torch.add(out, x)
 
-        out = self.tanh(out)
+        out = self.sigmoid(out)
         return out
 
 class SimpleONNDiscriminator(nn.Module):
@@ -700,7 +701,6 @@ class SimpleONNDiscriminator(nn.Module):
 
         if self.is_residual: out = torch.add(out, x)
 
-        out = self.tanh(out)
         return out
 
 
@@ -745,6 +745,7 @@ class UNetONNGenerator(nn.Module):
         self.onn4 = SelfONN2d(ngf+64 if is_residual else ngf, output_nc, kernel_size=7, padding=7 // 2, bias=use_bias, q=q, dropout=dropout)
 
         self.tanh  = nn.Tanh()  # NORMALIZE IMAGES TO -1 and 1
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
         x = self.onn1(x)
@@ -754,7 +755,7 @@ class UNetONNGenerator(nn.Module):
         if self.is_residual: u1 = torch.cat((u1, d1), dim=1)
         u2 = self.onn_trans2(self.tanh(u1))
         if self.is_residual: u2 = torch.cat((u2, x), dim=1)
-        out = self.tanh(self.onn4(self.tanh(u2)))
+        out = self.sigmoid(self.onn4(self.tanh(u2)))
         return out
 
 
@@ -807,5 +808,5 @@ class UNetONNDiscriminator(nn.Module):
         if self.is_residual: u1 = torch.cat((u1, d1), dim=1)
         u2 = self.onn_trans2(self.tanh(u1))
         if self.is_residual: u2 = torch.cat((u2, x), dim=1)
-        out = self.tanh(self.onn4(self.tanh(u2)))
+        out = self.onn4(self.tanh(u2))
         return out
