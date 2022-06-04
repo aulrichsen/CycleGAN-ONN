@@ -53,6 +53,27 @@ class CycleGANModel(BaseModel):
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
         self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A', 'D_B', 'G_B', 'cycle_B', 'idt_B']
+        self.domain_discriminator = False if opt.netDD == "none" else True
+        if self.domain_discriminator: 
+            self.loss_names += ["DD_A", "DD_B"]
+            self.loss_DD_A, self.loss_DD_B = [], []     # Make list so averages can be taken
+            self.netDD = networks.define_D(opt.output_nc, opt.ndf, opt.netDD,
+                                            opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias, init_model=False)
+            # ** May need to adjust options here... **
+
+            #self.netDD.cpu()
+            if opt.dataroot == "./datasets/yearbook2ffhq":
+                self.netDD.load_state_dict(torch.load("yearbook2ffhq_domain_discriminator_model.pth.tar"))
+            else:
+                assert False, "Domain discriminator not implemented for given dataset."
+
+            if len(opt.gpu_ids) > 0:
+                assert(torch.cuda.is_available())
+                self.netDD.to(opt.gpu_ids[0])
+                self.netDD = torch.nn.DataParallel(self.netDD, opt.gpu_ids)  # multi-GPUs
+            self.netDD.eval()
+
+            #   Load disc net here
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         visual_names_A = ['real_A', 'fake_B', 'rec_A']
         visual_names_B = ['real_B', 'fake_A', 'rec_B']
@@ -95,6 +116,21 @@ class CycleGANModel(BaseModel):
             self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
+
+    def get_current_losses(self):
+        """
+        Modify base get current losses to get average of netDD losses
+        """
+        if self.domain_discriminator: 
+            # Take average
+            self.loss_DD_A = sum(self.loss_DD_A) / len(self.loss_DD_A)
+            self.loss_DD_B = sum(self.loss_DD_B) / len(self.loss_DD_B)
+          
+        errors_ret = BaseModel.get_current_losses(self)
+        
+        if self.domain_discriminator: self.loss_DD_A, self.loss_DD_B = [], []   # Reset losses
+
+        return errors_ret
 
     def set_input(self, input):
         """Unpack input data from the dataloader and perform necessary pre-processing steps.
@@ -175,6 +211,14 @@ class CycleGANModel(BaseModel):
         self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
         # combined loss and calculate gradients
         self.loss_G = self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B
+        
+        if self.domain_discriminator:
+            #["DD_A", "DD_B"]
+            loss_DD_A = self.criterionGAN(self.netDD(self.fake_B), True)
+            loss_DD_B = self.criterionGAN(self.netDD(self.fake_A), False)
+            self.loss_DD_A.append(loss_DD_A.item())       # True for target domain
+            self.loss_DD_B.append(loss_DD_B.item())      # False for source domain
+            self.loss_G += loss_DD_A + loss_DD_B
         self.loss_G.backward()
 
     def optimize_parameters(self):

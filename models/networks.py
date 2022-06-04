@@ -165,7 +165,7 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     return init_net(net, init_type, init_gain, gpu_ids)
 
 
-def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal', init_gain=0.02, gpu_ids=[], q=3, is_residual=False, use_bias=True):
+def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal', init_gain=0.02, gpu_ids=[], q=3, is_residual=False, use_bias=True, init_model=True):
     """Create a discriminator
 
     Parameters:
@@ -210,8 +210,11 @@ def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal'
         net = UNetONNDiscriminator(input_nc, ndf, norm_layer=norm_layer, q=q, use_bias=use_bias, is_residual=is_residual)
     else:
         raise NotImplementedError('Discriminator model name [%s] is not recognized' % netD)
-    return init_net(net, init_type, init_gain, gpu_ids)
-
+    
+    if init_model:
+        return init_net(net, init_type, init_gain, gpu_ids)
+    else: 
+        return net
 
 ##############################################################################
 # Classes
@@ -700,7 +703,6 @@ class SimpleONNDiscriminator(nn.Module):
 
         if self.is_residual: out = torch.add(out, x)
 
-        out = self.tanh(out)
         return out
 
 
@@ -807,5 +809,5 @@ class UNetONNDiscriminator(nn.Module):
         if self.is_residual: u1 = torch.cat((u1, d1), dim=1)
         u2 = self.onn_trans2(self.tanh(u1))
         if self.is_residual: u2 = torch.cat((u2, x), dim=1)
-        out = self.tanh(self.onn4(self.tanh(u2)))
+        out = self.onn4(self.tanh(u2))
         return out
