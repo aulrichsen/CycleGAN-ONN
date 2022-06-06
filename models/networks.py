@@ -1,3 +1,4 @@
+from turtle import forward
 import torch
 import torch.nn as nn
 from torch.nn import init
@@ -160,6 +161,8 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
         net = SimpleONNGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, q=q, use_bias=use_bias, is_residual=is_residual)
     elif netG == 'unet_onn':
         net = UNetONNGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, q=q, use_bias=use_bias, is_residual=is_residual)
+    elif netG == 'test':
+        net = TestModel()
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -208,6 +211,8 @@ def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal'
         net = SimpleONNDiscriminator(input_nc, ndf, norm_layer=norm_layer, q=q, use_bias=use_bias, is_residual=is_residual)
     elif netD == 'unet_onn':
         net = UNetONNDiscriminator(input_nc, ndf, norm_layer=norm_layer, q=q, use_bias=use_bias, is_residual=is_residual)
+    elif netD == 'test':
+        net = TestModel()
     else:
         raise NotImplementedError('Discriminator model name [%s] is not recognized' % netD)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -299,6 +304,7 @@ def cal_gradient_penalty(netD, real_data, fake_data, device, type='mixed', const
 
     Returns the gradient penalty loss
     """
+    print("\n** Gradient penalty called! ** \n")
     if lambda_gp > 0.0:
         if type == 'real':   # either use real images, fake images, or a linear interpolation of two.
             interpolatesv = real_data
@@ -743,7 +749,7 @@ class UNetONNGenerator(nn.Module):
             
         self.onn4 = SelfONN2d(ngf+64 if is_residual else ngf, output_nc, kernel_size=7, padding=7 // 2, bias=use_bias, q=q, dropout=dropout)
 
-        self.tanh  = nn.Tanh()  # NORMALIZE IMAGES TO -1 and 1
+        self.tanh  = nn.Tanh()  # BOUND IMAGES BETWEEN -1 and 1
 
     def forward(self, x):
         x = self.onn1(x)
@@ -808,3 +814,12 @@ class UNetONNDiscriminator(nn.Module):
         if self.is_residual: u2 = torch.cat((u2, x), dim=1)
         out = self.onn4(self.tanh(u2))
         return out
+
+
+class TestModel(nn.Module):
+    def __init__(self):
+        super(TestModel, self).__init__()
+        self.conv = nn.Conv2d(1,1,3)
+
+    def forward(self, x):
+        return x

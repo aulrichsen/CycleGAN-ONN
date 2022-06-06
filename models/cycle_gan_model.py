@@ -41,7 +41,8 @@ class CycleGANModel(BaseModel):
             parser.add_argument('--lambda_A', type=float, default=10.0, help='weight for cycle loss (A -> B -> A)')
             parser.add_argument('--lambda_B', type=float, default=10.0, help='weight for cycle loss (B -> A -> B)')
             parser.add_argument('--lambda_identity', type=float, default=0.5, help='use identity mapping. Setting lambda_identity other than 0 has an effect of scaling the weight of the identity mapping loss. For example, if the weight of the identity loss should be 10 times smaller than the weight of the reconstruction loss, please set lambda_identity = 0.1')
-
+            if parser.gan_mode == 'wgangp':
+                parser.add_argument('--lambda_gp', type=float, default=10.0, help='weight for gradient pentaly in WGAN_GP loss')
         return parser
 
     def __init__(self, opt):
@@ -87,6 +88,8 @@ class CycleGANModel(BaseModel):
             self.fake_A_pool = ImagePool(opt.pool_size)  # create image buffer to store previously generated images
             self.fake_B_pool = ImagePool(opt.pool_size)  # create image buffer to store previously generated images
             # define loss functions
+            self.gan_mode = opt.gan_mode
+            if self.gan_mode == 'wgangp': self.lambda_gp = opt.lambda_gp
             self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)  # define GAN loss.
             self.criterionCycle = torch.nn.L1Loss()
             self.criterionIdt = torch.nn.L1Loss()
@@ -138,15 +141,42 @@ class CycleGANModel(BaseModel):
         loss_D.backward()
         return loss_D
 
+    def backward_D_wganp(self, netD, real, fake):
+        '''
+        Return the loss of a critic given the critic's scores for fake and real images,
+        the gradient penalty, and gradient penalty weight.
+        Parameters:
+            crit_fake_pred: the critic's scores of the fake images
+            crit_real_pred: the critic's scores of the real images
+            gp: the unweighted gradient penalty
+            c_lambda: the current weight of the gradient penalty 
+        Returns:
+            crit_loss: a scalar for the critic's loss, accounting for the relevant factors
+        '''
+        pred_real = netD(real)          # Real
+        pred_fake = netD(fake.detach()) # Fake
+
+        gp, _ = networks.cal_gradient_penalty(netD, real, fake.detach(), self.device, type='mixed', constant=1.0, lambda_gp=self.lambda_gp)
+
+        loss_D = torch.mean(pred_fake) - torch.mean(pred_real) + gp
+        loss_D.backward()
+        return loss_D
+
     def backward_D_A(self):
         """Calculate GAN loss for discriminator D_A"""
         fake_B = self.fake_B_pool.query(self.fake_B)
-        self.loss_D_A = self.backward_D_basic(self.netD_A, self.real_B, fake_B)
+        if self.gan_mode == 'wgangp':
+            self.loss_D_A = self.backward_D_wgangp(self.netD_A, self.real_B, fake_B)
+        else:
+            self.loss_D_A = self.backward_D_basic(self.netD_A, self.real_B, fake_B)
 
     def backward_D_B(self):
         """Calculate GAN loss for discriminator D_B"""
         fake_A = self.fake_A_pool.query(self.fake_A)
-        self.loss_D_B = self.backward_D_basic(self.netD_B, self.real_A, fake_A)
+        if self.gan_mode == 'wgangp':
+            self.loss_D_B = self.backward_D_wganp(self.netD_B, self.real_A, fake_A)    
+        else:
+            self.loss_D_B = self.backward_D_basic(self.netD_B, self.real_A, fake_A)
 
     def backward_G(self):
         """Calculate the loss for generators G_A and G_B"""
