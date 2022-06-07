@@ -161,6 +161,8 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
         net = SimpleONNGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, q=q, use_bias=use_bias, is_residual=is_residual)
     elif netG == 'unet_onn':
         net = UNetONNGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, q=q, use_bias=use_bias, is_residual=is_residual)
+    elif netG == 'wespe':
+        net = WESPEGenerator(input_nc, output_nc, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)
     elif netG == 'test':
         net = TestModel()
     else:
@@ -211,6 +213,8 @@ def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal'
         net = SimpleONNDiscriminator(input_nc, ndf, norm_layer=norm_layer, q=q, use_bias=use_bias, is_residual=is_residual)
     elif netD == 'unet_onn':
         net = UNetONNDiscriminator(input_nc, ndf, norm_layer=norm_layer, q=q, use_bias=use_bias, is_residual=is_residual)
+    elif netD == 'wespe':
+        net = WESPEDiscriminator(input_nc)
     elif netD == 'test':
         net = TestModel()
     else:
@@ -822,4 +826,105 @@ class TestModel(nn.Module):
         self.conv = nn.Conv2d(1,1,3)
 
     def forward(self, x):
+        return x
+
+
+class WESPEGenerator(nn.Module):
+
+    def __init__(self, input_nc, output_nc, norm_layer=nn.BatchNorm2d, use_dropout=False, use_bias=False):
+        super(WESPEGenerator, self).__init__()
+        self.beginning = nn.Conv2d(input_nc, 64, 9, padding=4)
+        self.blocks = nn.Sequential(
+            ResnetBlock(padding_type='zero'),
+            ResnetBlock(dim=64, padding_type='zero', norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias),
+            ResnetBlock(),
+            ResnetBlock(),
+        )
+        self.additional = nn.Sequential(
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, 3, padding=1, bias=use_bias),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, 3, padding=1, bias=use_bias),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, output_nc, 9, padding=4)
+        )
+
+        def weights_init(m):
+            if isinstance(m, nn.Conv2d):
+                torch.nn.init.kaiming_uniform_(m.weight)
+                if m.bias is not None:
+                    torch.nn.init.zeros_(m.bias)
+
+        self.apply(weights_init)
+
+    def forward(self, x):
+        """
+        Arguments:
+            x: a float tensor with shape [b, 3, h, w].
+            It represents a RGB image with pixel values in [0, 1] range.
+        Returns:
+            a float tensor with shape [b, 3, h, w].
+            It represents a RGB image with pixel values in [0, 1] range.
+        """
+        x = 2.0*x - 1.0
+        x = self.beginning(x)
+        x = self.blocks(x)
+        x = self.additional(x)
+        x = 0.5 * torch.tanh(x) + 0.5
+        return x
+
+class WESPEDiscriminator(nn.Module):
+
+    def __init__(self, input_nc):
+        super(WESPEDiscriminator, self).__init__()
+
+        self.feature_extractor = nn.Sequential(
+            nn.Conv2d(input_nc, 24, 11, stride=4, padding=5, bias=False),
+            nn.InstanceNorm2d(24, affine=True),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.Conv2d(24, 32, 5, stride=2, padding=2, bias=False),
+            nn.InstanceNorm2d(32, affine=True),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.Conv2d(32, 64, 3, stride=1, padding=1, bias=False),
+            nn.InstanceNorm2d(64, affine=True),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.Conv2d(64, 64, 3, stride=1, padding=1, bias=False),
+            nn.InstanceNorm2d(64, affine=True),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.Conv2d(64, 32, 3, stride=2, padding=1, bias=False),
+            nn.InstanceNorm2d(32, affine=True),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.AvgPool2d(1),       # Originally normal avg pool
+        )
+        self.classifier = nn.Sequential(
+            nn.Linear(32, 32, bias=False),
+            nn.LayerNorm(32),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.Linear(32, 1)
+        )
+
+        def weights_init(m):
+            if isinstance(m, (nn.Conv2d, nn.Linear)):
+                torch.nn.init.kaiming_uniform_(m.weight)
+                if m.bias is not None:
+                    torch.nn.init.zeros_(m.bias)
+
+        self.apply(weights_init)
+
+    def forward(self, x):
+        """
+        Arguments:
+            x: a float tensor with shape [b, num_input_channels, h, w].
+            It has values in [0, 1] range.
+        Returns:
+            a float tensor with shape [b].
+        """
+        b = x.size(0)
+        x = 2.0*x - 1.0
+        x = self.feature_extractor(x)
+        x = x.squeeze(2).squeeze(2)  # shape [b, 32]
+        x = self.classifier(x).view(b)
         return x

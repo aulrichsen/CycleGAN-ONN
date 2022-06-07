@@ -53,7 +53,7 @@ class CycleGANModel(BaseModel):
         """
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
-        self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A', 'D_B', 'G_B', 'cycle_B', 'idt_B']
+        self.loss_names = ['G', 'D', 'D_A', 'G_A', 'cycle_A', 'idt_A', 'D_B', 'G_B', 'cycle_B', 'idt_B']
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         visual_names_A = ['real_A', 'fake_B', 'rec_A']
         visual_names_B = ['real_B', 'fake_A', 'rec_B']
@@ -88,8 +88,6 @@ class CycleGANModel(BaseModel):
             self.fake_A_pool = ImagePool(opt.pool_size)  # create image buffer to store previously generated images
             self.fake_B_pool = ImagePool(opt.pool_size)  # create image buffer to store previously generated images
             # define loss functions
-            self.gan_mode = opt.gan_mode
-            if self.gan_mode == 'wgangp': self.lambda_gp = opt.lambda_gp
             self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)  # define GAN loss.
             self.criterionCycle = torch.nn.L1Loss()
             self.criterionIdt = torch.nn.L1Loss()
@@ -156,7 +154,7 @@ class CycleGANModel(BaseModel):
         pred_real = netD(real)          # Real
         pred_fake = netD(fake.detach()) # Fake
 
-        gp, _ = networks.cal_gradient_penalty(netD, real, fake.detach(), self.device, type='mixed', constant=1.0, lambda_gp=self.lambda_gp)
+        gp, _ = networks.cal_gradient_penalty(netD, real, fake.detach(), self.device, type='mixed', constant=1.0, lambda_gp=self.opt.lambda_gp)
 
         loss_D = torch.mean(pred_fake) - torch.mean(pred_real) + gp
         loss_D.backward()
@@ -165,7 +163,7 @@ class CycleGANModel(BaseModel):
     def backward_D_A(self):
         """Calculate GAN loss for discriminator D_A"""
         fake_B = self.fake_B_pool.query(self.fake_B)
-        if self.gan_mode == 'wgangp':
+        if self.opt.gan_mode == 'wgangp':
             self.loss_D_A = self.backward_D_wgangp(self.netD_A, self.real_B, fake_B)
         else:
             self.loss_D_A = self.backward_D_basic(self.netD_A, self.real_B, fake_B)
