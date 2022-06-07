@@ -151,11 +151,12 @@ class WESPE(BaseModel):
             the modified parser.
 
         """
+        parser.set_defaults(lr=1e-4)
         parser.set_defaults(batch_size=64)
         parser.set_defaults(netD='wespe')
         parser.set_defaults(netG='wespe')
         if is_train:
-            parser.add_argument('--lr_disc', type=float, default=4e-04, help='initial learning rate for discriminators.')
+            parser.add_argument('--lr_disc', type=float, default=4e-4, help='initial learning rate for discriminators.')
             parser.add_argument('--lambda_tv', type=float, default=10.0, help='weight of tv loss.')
             parser.add_argument('--lambda_ct', type=float,  default=5e-3, help='weight of texture and colour loss.')
 
