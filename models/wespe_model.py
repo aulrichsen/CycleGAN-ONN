@@ -137,7 +137,7 @@ class Grayscale(nn.Module):
         return result.unsqueeze(1)
 
 
-class WESPE(BaseModel):
+class WESPEModel(BaseModel):
 
     @staticmethod
     def modify_commandline_options(parser, is_train=True):
