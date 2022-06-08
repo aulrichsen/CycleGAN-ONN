@@ -190,6 +190,11 @@ class WESPE(BaseModel):
         self.c_optimizer = optim.Adam(lr=opt.lr_disc, params=self.discriminator_c.parameters(), betas=betas)
         self.t_optimizer = optim.Adam(lr=opt.lr_disc, params=self.discriminator_t.parameters(), betas=betas)
 
+        self.optimizers.append(self.G_optimizer)
+        self.optimizers.append(self.F_optimizer)
+        self.optimizers.append(self.c_optimizer)
+        self.optimizers.append(self.t_optimizer)
+
         self.blur = GaussianBlur().to(self.device)
         self.gray = Grayscale().to(self.device)
 
