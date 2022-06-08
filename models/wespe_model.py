@@ -159,7 +159,8 @@ class WESPEModel(BaseModel):
             parser.add_argument('--lr_disc', type=float, default=4e-4, help='initial learning rate for discriminators.')
             parser.add_argument('--lambda_tv', type=float, default=10.0, help='weight of tv loss.')
             parser.add_argument('--lambda_ct', type=float,  default=5e-3, help='weight of texture and colour loss.')
-
+        return parser
+        
     def __init__(self, opt):
         BaseModel.__init__(self, opt)
 
