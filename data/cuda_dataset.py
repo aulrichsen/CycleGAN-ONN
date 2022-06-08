@@ -42,12 +42,12 @@ class CudaDataset(BaseDataset):
         for A_path in self.A_paths:
             A_img = Image.open(A_path).convert('RGB')
             A_img = self.transform_A(A_img).to(device)
-            self.A_imgs.append(A_img)#.unsqueeze(0))
+            self.A_imgs.append(A_img.unsqueeze(0))
         self.B_imgs = []
         for B_path in self.B_paths:
             B_img = Image.open(B_path).convert('RGB')
             B_img = self.transform_B(B_img).to(device)
-            self.B_imgs.append(B_img)#.unsqueeze(0))
+            self.B_imgs.append(B_img.unsqueeze(0))
 
 
     def __getitem__(self, index):
