@@ -169,16 +169,21 @@ class WESPEModel(BaseModel):
         self.loss_names = ['G', 'D', 'D_t', 'D_c', 'G_t', 'G_c', 'content', 'tv']
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         self.visual_names = ['real_A', 'fake_B', 'real_B', 'rec_A']        
+        # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>.
+        if self.isTrain:
+            self.model_names = ['G_G', 'G_F', 'D_c', 'D_t']
+        else:  # during test time, only load Gs
+            self.model_names = ['G_G', 'G_F']
 
-        self.generator_G = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
+        self.netG_G = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
                                         not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias)    # Source to target domain
-        self.generator_F = networks.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm,
+        self.netG_F = networks.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm,
                                         not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias)    # Reconstruction
 
         if self.isTrain:  # define discriminators
-            self.discriminator_c = networks.define_D(opt.output_nc, opt.ndf, opt.netD,
+            self.netD_c = networks.define_D(opt.output_nc, opt.ndf, opt.netD,
                                             opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias)
-            self.discriminator_t = networks.define_D(1, opt.ndf, opt.netD,
+            self.netD_t = networks.define_D(1, opt.ndf, opt.netD,
                                             opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias)
 
         self.content_criterion = ContentLoss().to(self.device)
@@ -187,10 +192,10 @@ class WESPEModel(BaseModel):
         self.texture_criterion = nn.BCEWithLogitsLoss().to(self.device)
 
         betas = (opt.beta1, 0.999)
-        self.G_optimizer = optim.Adam(lr=opt.lr, params=self.generator_G.parameters(), betas=betas)
-        self.F_optimizer = optim.Adam(lr=opt.lr, params=self.generator_F.parameters(), betas=betas)
-        self.c_optimizer = optim.Adam(lr=opt.lr_disc, params=self.discriminator_c.parameters(), betas=betas)
-        self.t_optimizer = optim.Adam(lr=opt.lr_disc, params=self.discriminator_t.parameters(), betas=betas)
+        self.G_optimizer = optim.Adam(lr=opt.lr, params=self.netG_G.parameters(), betas=betas)
+        self.F_optimizer = optim.Adam(lr=opt.lr, params=self.netG_F.parameters(), betas=betas)
+        self.c_optimizer = optim.Adam(lr=opt.lr_disc, params=self.netD_c.parameters(), betas=betas)
+        self.t_optimizer = optim.Adam(lr=opt.lr_disc, params=self.netD_t.parameters(), betas=betas)
 
         self.optimizers.append(self.G_optimizer)
         self.optimizers.append(self.F_optimizer)
@@ -215,8 +220,8 @@ class WESPEModel(BaseModel):
 
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
-        self.fake_B = self.generator_G(self.real_A)  # G_A(A)
-        self.rec_A = self.generator_F(self.fake_B)   # G_B(G_A(A))
+        self.fake_B = self.netG_G(self.real_A)  # G_A(A)
+        self.rec_A = self.netG_F(self.fake_B)   # G_B(G_A(A))
 
     def backward_D(self):
         batch_size = self.real_A.size(0)
@@ -234,13 +239,13 @@ class WESPEModel(BaseModel):
         
         targets = torch.cat([pos_labels, neg_labels], dim=0)
 
-        is_real_real = self.discriminator_c(real_B_blur)
-        is_fake_real = self.discriminator_c(fake_B_blur.detach())
+        is_real_real = self.netD_c(real_B_blur)
+        is_fake_real = self.netD_c(fake_B_blur.detach())
         logits = torch.cat([is_real_real, is_fake_real], dim=0)
         self.loss_D_c = self.color_criterion(logits, targets)
 
-        is_real_real = self.discriminator_t(real_B_gray)
-        is_fake_real = self.discriminator_t(fake_B_gray.detach())
+        is_real_real = self.netD_t(real_B_gray)
+        is_fake_real = self.netD_t(fake_B_gray.detach())
         logits = torch.cat([is_real_real, is_fake_real], dim=0)
         self.loss_D_t = self.texture_criterion(logits, targets)
 
@@ -253,7 +258,7 @@ class WESPEModel(BaseModel):
 
 
     def backward_G(self):
-        """Calculate the loss for generator_g and generator_f"""
+        """Calculate the loss for generators G_G and G_F"""
         
         self.loss_content = self.content_criterion(self.real_A, self.rec_A)
         self.loss_tv = self.tv_criterion(self.fake_B)
@@ -262,14 +267,14 @@ class WESPEModel(BaseModel):
         pos_labels = torch.ones(batch_size, dtype=torch.float, device=self.real_A.device)
 
         fake_B_blur = self.blur(self.fake_B)
-        self.loss_G_c = self.color_criterion(self.discriminator_c(fake_B_blur), pos_labels)
+        self.loss_G_c = self.color_criterion(self.netD_c(fake_B_blur), pos_labels)
 
         if self.fake_B.shape[1] == 1:   
             fake_B_gray = self.fake_B       # No change to already grayscale image
         else:
             fake_B_gray = self.gray(self.fake_B)    # RGB to grayscale
 
-        self.loss_G_t = self.texture_criterion(self.discriminator_t(fake_B_gray), pos_labels)
+        self.loss_G_t = self.texture_criterion(self.netD_t(fake_B_gray), pos_labels)
 
         self.loss_G = self.loss_content + self.opt.lambda_tv * self.loss_tv
         self.loss_G += self.opt.lambda_ct * (self.loss_G_c + self.loss_G_t)
@@ -285,10 +290,10 @@ class WESPEModel(BaseModel):
         """Calculate losses, gradients, and update network weights; called in every training iteration"""
         # forward
         self.forward()      # compute fake images and reconstruction images.
-        # generator_G and generator_F
-        self.set_requires_grad([self.discriminator_c, self.discriminator_t], False)  # Ds require no gradients when optimizing Gs
-        self.backward_G()             # calculate gradients for generator_G and generator_F
-        # discriminator_t and discriminator_c
-        self.set_requires_grad([self.discriminator_c, self.discriminator_t], True)
+        # generators G_G and G_F
+        self.set_requires_grad([self.netD_c, self.netD_t], False)  # Ds require no gradients when optimizing Gs
+        self.backward_G()             # calculate gradients for generators G_G and G_F
+        # netD_t and netD_c
+        self.set_requires_grad([self.netD_c, self.netD_t], True)
         self.backward_D()
        
