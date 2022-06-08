@@ -52,7 +52,7 @@ class CycleGANModel(BaseModel):
         """
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
-        self.loss_names = ['G', 'D', 'D_A', 'G_A', 'cycle_A', 'idt_A', 'D_B', 'G_B', 'cycle_B', 'idt_B']
+        self.loss_names = ['G', 'D_A', 'G_A', 'cycle_A', 'idt_A', 'D_B', 'G_B', 'cycle_B', 'idt_B']
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         visual_names_A = ['real_A', 'fake_B', 'rec_A']
         visual_names_B = ['real_B', 'fake_A', 'rec_B']
@@ -138,7 +138,7 @@ class CycleGANModel(BaseModel):
         loss_D.backward()
         return loss_D
 
-    def backward_D_wganp(self, netD, real, fake):
+    def backward_D_wgangp(self, netD, real, fake):
         '''
         Return the loss of a critic given the critic's scores for fake and real images,
         the gradient penalty, and gradient penalty weight.
@@ -171,7 +171,7 @@ class CycleGANModel(BaseModel):
         """Calculate GAN loss for discriminator D_B"""
         fake_A = self.fake_A_pool.query(self.fake_A)
         if self.opt.gan_mode == 'wgangp':
-            self.loss_D_B = self.backward_D_wganp(self.netD_B, self.real_A, fake_A)    
+            self.loss_D_B = self.backward_D_wgangp(self.netD_B, self.real_A, fake_A)    
         else:
             self.loss_D_B = self.backward_D_basic(self.netD_B, self.real_A, fake_A)
 
