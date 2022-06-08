@@ -62,13 +62,15 @@ class CudaDataset(BaseDataset):
             A_paths (str)    -- image paths
             B_paths (str)    -- image paths
         """
-        A_path = self.A_paths[index % self.A_size]  # make sure index is within then range
+        #A_path = self.A_paths[index % self.A_size]  # make sure index is within then range
+        A_path = self.A_paths[index]  # make sure index is within then range
         if self.opt.serial_batches:   # make sure index is within then range
-            index_B = index % self.B_size
+            #index_B = index % self.B_size
+            index_B = index
         else:   # randomize the index for domain B to avoid fixed pairs.
             index_B = random.randint(0, self.B_size - 1)
         B_path = self.B_paths[index_B]
-        A_img = self.A_imgs[index % self.A_size]
+        A_img = self.A_imgs[index]
         B_img = self.B_imgs[index_B]
 
         return {'A': A_img, 'B': B_img, 'A_paths': A_path, 'B_paths': B_path}
