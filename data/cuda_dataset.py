@@ -68,7 +68,7 @@ class CudaDataset(BaseDataset):
         else:   # randomize the index for domain B to avoid fixed pairs.
             index_B = random.randint(0, self.B_size - 1)
         B_path = self.B_paths[index_B]
-        A_img = self.A_imgs[index]
+        A_img = self.A_imgs[index % self.A_size]
         B_img = self.B_imgs[index_B]
 
         return {'A': A_img, 'B': B_img, 'A_paths': A_path, 'B_paths': B_path}
