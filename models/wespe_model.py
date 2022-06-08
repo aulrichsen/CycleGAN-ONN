@@ -95,8 +95,9 @@ def gradient_penalty(x, y, f):
 
 class GaussianBlur(nn.Module):
 
-    def __init__(self):
+    def __init__(self, chans=3):
         super(GaussianBlur, self).__init__()
+        self.chans = chans
 
         def get_kernel(size=21, std=3):
             """Returns a 2D Gaussian kernel array."""
@@ -105,7 +106,7 @@ class GaussianBlur(nn.Module):
             return k/k.sum()
 
         kernel = get_kernel(size=11, std=3)
-        kernel = torch.Tensor(kernel).unsqueeze(0).unsqueeze(0).repeat([3, 1, 1, 1])
+        kernel = torch.Tensor(kernel).unsqueeze(0).unsqueeze(0).repeat([self.chans, 1, 1, 1])
         self.kernel = nn.Parameter(data=kernel, requires_grad=False)  # shape [3, 1, 11, 11]
 
     def forward(self, x):
@@ -116,7 +117,7 @@ class GaussianBlur(nn.Module):
         Returns:
             a float tensor with shape [b, 3, h, w].
         """
-        x = F.conv2d(x, self.kernel, padding=5, groups=3)
+        x = F.conv2d(x, self.kernel, padding=5, groups=self.chans)
         return x
 
 
@@ -160,7 +161,7 @@ class WESPEModel(BaseModel):
             parser.add_argument('--lambda_tv', type=float, default=10.0, help='weight of tv loss.')
             parser.add_argument('--lambda_ct', type=float,  default=5e-3, help='weight of texture and colour loss.')
         return parser
-        
+
     def __init__(self, opt):
         BaseModel.__init__(self, opt)
 
@@ -196,7 +197,7 @@ class WESPEModel(BaseModel):
         self.optimizers.append(self.c_optimizer)
         self.optimizers.append(self.t_optimizer)
 
-        self.blur = GaussianBlur().to(self.device)
+        self.blur = GaussianBlur(chans=opt.output_nc).to(self.device)
         self.gray = Grayscale().to(self.device)
 
     def set_input(self, input):
