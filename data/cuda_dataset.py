@@ -36,17 +36,18 @@ class CudaDataset(BaseDataset):
         self.transform_A = get_transform(self.opt, grayscale=(input_nc == 1))
         self.transform_B = get_transform(self.opt, grayscale=(output_nc == 1))
 
-        device = "cuda:"+str(min(opt.gpu_ids))
+        if min(opt.gpu_ids) >= 0: device = "cuda:"+str(min(opt.gpu_ids))
+        else: device = "cpu"
         self.A_imgs = []
         for A_path in self.A_paths:
             A_img = Image.open(A_path).convert('RGB')
             A_img = self.transform_A(A_img).to(device)
-            self.A_imgs.append(A_img.unsqueeze(0))
+            self.A_imgs.append(A_img)#.unsqueeze(0))
         self.B_imgs = []
         for B_path in self.B_paths:
             B_img = Image.open(B_path).convert('RGB')
             B_img = self.transform_B(B_img).to(device)
-            self.B_imgs.append(B_img.unsqueeze(0))
+            self.B_imgs.append(B_img)#.unsqueeze(0))
 
 
     def __getitem__(self, index):
