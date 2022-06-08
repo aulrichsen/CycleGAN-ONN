@@ -834,7 +834,7 @@ class WESPEGenerator(nn.Module):
         super(WESPEGenerator, self).__init__()
         self.beginning = nn.Conv2d(input_nc, 64, 9, padding=4)
         self.blocks = nn.Sequential(
-            ResnetBlock(padding_type='zero'),
+            ResnetBlock(dim=64, padding_type='zero', norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias),
             ResnetBlock(dim=64, padding_type='zero', norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias),
             ResnetBlock(dim=64, padding_type='zero', norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias),
             ResnetBlock(dim=64, padding_type='zero', norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias),
