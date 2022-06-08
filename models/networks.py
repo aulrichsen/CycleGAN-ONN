@@ -859,6 +859,8 @@ class WESPEGenerator(nn.Module):
 
         self.apply(weights_init)
 
+        self.tanh = nn.Tanh()
+
     def forward(self, x):
         """
         Arguments:
@@ -872,7 +874,8 @@ class WESPEGenerator(nn.Module):
         x = self.beginning(x)
         x = self.blocks(x)
         x = self.additional(x)
-        x = 0.5 * torch.tanh(x) + 0.5
+        #x = 0.5 * torch.tanh(x) + 0.5
+        x = self.tanh(x)
         return x
 
 class WESPEDiscriminator(nn.Module):
