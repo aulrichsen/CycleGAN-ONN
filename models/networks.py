@@ -836,8 +836,8 @@ class WESPEGenerator(nn.Module):
         self.blocks = nn.Sequential(
             ResnetBlock(padding_type='zero'),
             ResnetBlock(dim=64, padding_type='zero', norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias),
-            ResnetBlock(),
-            ResnetBlock(),
+            ResnetBlock(dim=64, padding_type='zero', norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias),
+            ResnetBlock(dim=64, padding_type='zero', norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias),
         )
         self.additional = nn.Sequential(
             nn.BatchNorm2d(64),
