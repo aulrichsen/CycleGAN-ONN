@@ -307,7 +307,6 @@ def cal_gradient_penalty(netD, real_data, fake_data, device, type='mixed', const
 
     Returns the gradient penalty loss
     """
-    print("\n** Gradient penalty called! ** \n")
     if lambda_gp > 0.0:
         if type == 'real':   # either use real images, fake images, or a linear interpolation of two.
             interpolatesv = real_data
