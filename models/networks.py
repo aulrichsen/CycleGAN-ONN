@@ -896,7 +896,7 @@ class WESPEDiscriminator(nn.Module):
             nn.Conv2d(64, 32, 3, stride=2, padding=1, bias=False),
             nn.InstanceNorm2d(32, affine=True),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
-            nn.AvgPool2d(1),       # Originally normal avg pool
+            nn.AdaptiveAvgPool2d((1,1)),       # Originally normal avg pool
         )
         self.classifier = nn.Sequential(
             nn.Linear(32, 32, bias=False),
