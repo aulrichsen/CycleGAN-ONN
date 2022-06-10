@@ -156,6 +156,7 @@ class WESPEModel(BaseModel):
         parser.set_defaults(batch_size=64)
         parser.set_defaults(netD='wespe')
         parser.set_defaults(netG='wespe')
+        parser.set_defaults(init_type='kaiming')
         if is_train:
             parser.add_argument('--lr_disc', type=float, default=4e-4, help='initial learning rate for discriminators.')
             parser.add_argument('--lambda_tv', type=float, default=10.0, help='weight of tv loss.')
@@ -176,15 +177,15 @@ class WESPEModel(BaseModel):
             self.model_names = ['G_G', 'G_F']
 
         self.netG_G = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias)    # Source to target domain
+                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias, opt.gen_kernel_sizes)    # Source to target domain
         self.netG_F = networks.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm,
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias)    # Reconstruction
+                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias, opt.gen_kernel_sizes)    # Reconstruction
 
         if self.isTrain:  # define discriminators
             self.netD_c = networks.define_D(opt.output_nc, opt.ndf, opt.netD,
-                                            opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias)
+                                            opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias, opt.disc_kernel_sizes)
             self.netD_t = networks.define_D(1, opt.ndf, opt.netD,
-                                            opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias)
+                                            opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias, opt.disc_kernel_sizes)
 
         self.content_criterion = ContentLoss().to(self.device)
         self.tv_criterion = TVLoss().to(self.device)

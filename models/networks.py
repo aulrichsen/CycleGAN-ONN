@@ -81,20 +81,20 @@ def init_weights(net, init_type='normal', init_gain=0.02):
         classname = m.__class__.__name__
         if hasattr(m, 'weight') and (classname.find('Conv') != -1 or classname.find('Linear') != -1):
             if init_type == 'normal':
-                init.normal_(m.weight.data, 0.0, init_gain)
+                init.normal_(m.weight, 0.0, init_gain)
             elif init_type == 'xavier':
-                init.xavier_normal_(m.weight.data, gain=init_gain)
+                init.xavier_normal_(m.weight, gain=init_gain)
             elif init_type == 'kaiming':
-                init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
+                init.kaiming_normal_(m.weight, a=0, mode='fan_in')
             elif init_type == 'orthogonal':
-                init.orthogonal_(m.weight.data, gain=init_gain)
+                init.orthogonal_(m.weight, gain=init_gain)
             else:
                 raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
             if hasattr(m, 'bias') and m.bias is not None:
-                init.constant_(m.bias.data, 0.0)
+                init.constant_(m.bias, 0.0)
         elif classname.find('BatchNorm2d') != -1:  # BatchNorm Layer's weight is not a matrix; only normal distribution applies.
-            init.normal_(m.weight.data, 1.0, init_gain)
-            init.constant_(m.bias.data, 0.0)
+            init.normal_(m.weight, 1.0, init_gain)
+            init.constant_(m.bias, 0.0)
 
     print('initialize network with %s' % init_type)
     net.apply(init_func)  # apply the initialization function <init_func>
@@ -118,7 +118,7 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     return net
 
 
-def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[], q=3, is_residual=False, use_bias=True):
+def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[], q=3, is_residual=False, use_bias=True, kernel_sizes=[]):
     """Create a generator
 
     Parameters:
@@ -157,7 +157,7 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     elif netG == 'unet_256':
         net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'simple_onn':
-        net = SimpleONNGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, q=q, use_bias=use_bias, is_residual=is_residual)
+        net = SimpleONNGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, q=q, use_bias=use_bias, is_residual=is_residual, kernel_sizes=kernel_sizes)
     elif netG == 'unet_onn':
         net = UNetONNGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, q=q, use_bias=use_bias, is_residual=is_residual)
     elif netG == 'wespe':
@@ -169,7 +169,7 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     return init_net(net, init_type, init_gain, gpu_ids)
 
 
-def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal', init_gain=0.02, gpu_ids=[], q=3, is_residual=False, use_bias=True):
+def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal', init_gain=0.02, gpu_ids=[], q=3, is_residual=False, use_bias=True, kernel_sizes=[]):
     """Create a discriminator
 
     Parameters:
@@ -209,7 +209,7 @@ def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal'
     elif netD == 'pixel':     # classify if each pixel is real or fake
         net = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer)
     elif netD == 'simple_onn':
-        net = SimpleONNDiscriminator(input_nc, ndf, norm_layer=norm_layer, q=q, use_bias=use_bias, is_residual=is_residual)
+        net = SimpleONNDiscriminator(input_nc, ndf, norm_layer=norm_layer, q=q, use_bias=use_bias, is_residual=is_residual, kernel_sizes=kernel_sizes)
     elif netD == 'unet_onn':
         net = UNetONNDiscriminator(input_nc, ndf, norm_layer=norm_layer, q=q, use_bias=use_bias, is_residual=is_residual)
     elif netD == 'wespe':
@@ -639,7 +639,7 @@ class SimpleONNGenerator(nn.Module):
     """
     Simple ONN generator network.
     """
-    def __init__(self, input_nc, output_nc, ngf=64, q=3, use_bias=True, norm_layer=nn.BatchNorm2d, use_dropout=False, is_residual=False):
+    def __init__(self, input_nc, output_nc, ngf=64, q=3, use_bias=True, norm_layer=nn.BatchNorm2d, use_dropout=False, is_residual=False, kernel_sizes=[]):
         """Construct a Simple SelfONN-based generator
 
         Parameters:
@@ -651,18 +651,26 @@ class SimpleONNGenerator(nn.Module):
             norm_layer          -- normalization layer
             use_dropout (bool)  -- if use dropout layers
             is_residual (bool)  -- use residual connection to connect input directly to output
+            kernel_sizes        -- list of filter sizes to be used at each layer.
         """
         super(SimpleONNGenerator, self).__init__()
+        if not kernel_sizes:
+            kernel_sizes = [7,3,7]      # Default if unspecified
+        while len(kernel_sizes) < 3:
+            kernel_sizes.append(3)      # Add default kernel_size 3 for any unspecified kernels
+        if len(kernel_sizes) > 3:
+            print("Warning. Too many kernel sizes specified for Simple ONN Generator. Using:", kernel_sizes[:3])
+
         self.is_residual = is_residual
         dropout = 0.5 if use_dropout else None
         self.net = nn.Sequential(
-            SelfONN2d(input_nc, 64, kernel_size=7, padding=7 // 2, bias=use_bias, q=q, dropout=dropout),
+            SelfONN2d(input_nc, 64, kernel_size=kernel_sizes[0], padding=7 // 2, bias=use_bias, q=q, dropout=dropout),
             norm_layer(64),
             nn.Tanh(),
-            SelfONN2d(64, ngf, kernel_size=3, padding=3 // 2, bias=use_bias, q=q, dropout=dropout),
+            SelfONN2d(64, ngf, kernel_size=kernel_sizes[1], padding=3 // 2, bias=use_bias, q=q, dropout=dropout),
             norm_layer(64),
             nn.Tanh(),
-            SelfONN2d(ngf, output_nc, kernel_size=7, padding=7 // 2, bias=use_bias, q=q, dropout=dropout))
+            SelfONN2d(ngf, output_nc, kernel_size=kernel_sizes[2], padding=7 // 2, bias=use_bias, q=q, dropout=dropout))
 
         self.tanh = nn.Tanh()
 
@@ -678,7 +686,7 @@ class SimpleONNDiscriminator(nn.Module):
     """
     Simple 3 layer ONN discriminator network.
     """
-    def __init__(self, input_nc, ndf=64, q=3, use_bias=True, norm_layer=nn.BatchNorm2d, is_residual=False):
+    def __init__(self, input_nc, ndf=64, q=3, use_bias=True, norm_layer=nn.BatchNorm2d, is_residual=False, kernel_sizes=[]):
         """Construct a Simple SelfONN-based discriminator
 
         Parameters:
@@ -690,16 +698,23 @@ class SimpleONNDiscriminator(nn.Module):
             is_residual (bool)  -- use residual connection to connect input directly to output
         """
         super(SimpleONNDiscriminator, self).__init__()
+        if not kernel_sizes:
+            kernel_sizes = [3,3,7]      # Default if unspecified
+        while len(kernel_sizes) < 3:
+            kernel_sizes.append(3)      # Add default kernel_size 3 for any unspecified kernels
+        if len(kernel_sizes) > 3:
+            print("Warning. Too many kernel sizes specified for Simple ONN Discriminator. Using:", kernel_sizes[:3])
+
         self.is_residual = is_residual
 
         self.net = nn.Sequential(
-            SelfONN2d(input_nc, 64, kernel_size=3, padding=3 // 2, bias=use_bias, q=q),
+            SelfONN2d(input_nc, 64, kernel_size=kernel_sizes[0], padding=3 // 2, bias=use_bias, q=q),
             norm_layer(64),
             nn.Tanh(),
-            SelfONN2d(64, ndf, kernel_size=3, padding=3 // 2, bias=use_bias, q=q),
+            SelfONN2d(64, ndf, kernel_size=kernel_sizes[1], padding=3 // 2, bias=use_bias, q=q),
             norm_layer(64),
             nn.Tanh(),
-            SelfONN2d(ndf, 1, kernel_size=7, padding=7 // 2, bias=use_bias, q=q))    # output 1 channel prediction map
+            SelfONN2d(ndf, 1, kernel_size=kernel_sizes[2], padding=7 // 2, bias=use_bias, q=q))    # output 1 channel prediction map
 
         self.tanh = nn.Tanh()
 

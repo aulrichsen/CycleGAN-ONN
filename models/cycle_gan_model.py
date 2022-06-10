@@ -71,15 +71,15 @@ class CycleGANModel(BaseModel):
         # The naming is different from those used in the paper.
         # Code (vs. paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
         self.netG_A = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias)
+                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias, opt.gen_kernel_sizes)
         self.netG_B = networks.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm,
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias)
+                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias, opt.gen_kernel_sizes)
 
         if self.isTrain:  # define discriminators
             self.netD_A = networks.define_D(opt.output_nc, opt.ndf, opt.netD,
-                                            opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias)
+                                            opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias, opt.disc_kernel_sizes)
             self.netD_B = networks.define_D(opt.input_nc, opt.ndf, opt.netD,
-                                            opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias)
+                                            opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids, opt.q, opt.is_residual, not opt.no_bias, opt.disc_kernel_sizes)
 
         if self.isTrain:
             if opt.lambda_identity > 0.0:  # only works when input and output images have the same number of channels
@@ -140,15 +140,14 @@ class CycleGANModel(BaseModel):
 
     def backward_D_wgangp(self, netD, real, fake):
         '''
-        Return the loss of a critic given the critic's scores for fake and real images,
+        Return the loss of a discriminator given the discriminator's scores for fake and real images,
         the gradient penalty, and gradient penalty weight.
         Parameters:
-            crit_fake_pred: the critic's scores of the fake images
-            crit_real_pred: the critic's scores of the real images
-            gp: the unweighted gradient penalty
-            c_lambda: the current weight of the gradient penalty 
+            netD:       discriminator network
+            gp:         the unweighted gradient penalty
+            c_lambda:   the current weight of the gradient penalty 
         Returns:
-            crit_loss: a scalar for the critic's loss, accounting for the relevant factors
+            lossD: a scalar for the discriminators's loss, accounting for the relevant factors
         '''
         pred_real = netD(real)          # Real
         pred_fake = netD(fake.detach()) # Fake
