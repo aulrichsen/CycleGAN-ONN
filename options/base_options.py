@@ -42,8 +42,8 @@ class BaseOptions():
         parser.add_argument('--q', type=int, default=3, help='q value for ONN.')
         parser.add_argument('--is_residual', action='store_true', help='Use residual connection in simple onn models.')
         parser.add_argument('--no_bias', action='store_true', help="Don't use bias in onn models.")
-        parser.add_argument('--gen_kernel_sizes', type=list, default=[], help='kernel sizes to be used in ONN generator.')
-        parser.add_argument('--disc_kernel_sizes', type=list, default=[], help='kernel sizes to be used in ONN discriminator.')
+        parser.add_argument('--gen_kernel_sizes', nargs="+", default=[], help='kernel sizes to be used in ONN generator.')
+        parser.add_argument('--disc_kernel_sizes', nargs="+", default=[], help='kernel sizes to be used in ONN discriminator.')
         # dataset parameters
         parser.add_argument('--dataset_mode', type=str, default='unaligned', help='chooses how datasets are loaded. [unaligned | aligned | single | colorization]')
         parser.add_argument('--direction', type=str, default='AtoB', help='AtoB or BtoA')
