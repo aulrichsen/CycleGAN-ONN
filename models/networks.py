@@ -664,13 +664,13 @@ class SimpleONNGenerator(nn.Module):
         self.is_residual = is_residual
         dropout = 0.5 if use_dropout else None
         self.net = nn.Sequential(
-            SelfONN2d(input_nc, 64, kernel_size=int(kernel_sizes[0]), padding=7 // 2, bias=use_bias, q=q, dropout=dropout),
+            SelfONN2d(input_nc, 64, kernel_size=int(kernel_sizes[0]), padding=int(kernel_sizes[0]) // 2, bias=use_bias, q=q, dropout=dropout),
             norm_layer(64),
             nn.Tanh(),
-            SelfONN2d(64, ngf, kernel_size=int(kernel_sizes[1]), padding=3 // 2, bias=use_bias, q=q, dropout=dropout),
+            SelfONN2d(64, ngf, kernel_size=int(kernel_sizes[1]), padding=int(kernel_sizes[1]) // 2, bias=use_bias, q=q, dropout=dropout),
             norm_layer(64),
             nn.Tanh(),
-            SelfONN2d(ngf, output_nc, kernel_size=int(kernel_sizes[2]), padding=7 // 2, bias=use_bias, q=q, dropout=dropout))
+            SelfONN2d(ngf, output_nc, kernel_size=int(kernel_sizes[2]), padding=int(kernel_sizes[2]) // 2, bias=use_bias, q=q, dropout=dropout))
 
         self.tanh = nn.Tanh()
 
@@ -708,13 +708,13 @@ class SimpleONNDiscriminator(nn.Module):
         self.is_residual = is_residual
 
         self.net = nn.Sequential(
-            SelfONN2d(input_nc, 64, kernel_size=int(kernel_sizes[0]), padding=3 // 2, bias=use_bias, q=q),
+            SelfONN2d(input_nc, 64, kernel_size=int(kernel_sizes[0]), padding=int(kernel_sizes[0]) // 2, bias=use_bias, q=q),
             norm_layer(64),
             nn.Tanh(),
-            SelfONN2d(64, ndf, kernel_size=int(kernel_sizes[1]), padding=3 // 2, bias=use_bias, q=q),
+            SelfONN2d(64, ndf, kernel_size=int(kernel_sizes[1]), padding=int(kernel_sizes[1]) // 2, bias=use_bias, q=q),
             norm_layer(64),
             nn.Tanh(),
-            SelfONN2d(ndf, 1, kernel_size=int(kernel_sizes[2]), padding=7 // 2, bias=use_bias, q=q))    # output 1 channel prediction map
+            SelfONN2d(ndf, 1, kernel_size=int(kernel_sizes[2]), padding=int(kernel_sizes[2]) // 2, bias=use_bias, q=q))    # output 1 channel prediction map
 
         self.tanh = nn.Tanh()
 
